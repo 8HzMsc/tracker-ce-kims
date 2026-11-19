@@ -79,6 +79,7 @@ All plugins in [`editor-fx-sdk/effects/`](../editor-fx-sdk/effects) can be compi
 | [`cross_mod.c`](../editor-fx-sdk/effects/cross_mod.c) | `Sample Cross-Mod` | `EFFECT \| STEREO` | `0 B` | `Mod WAV` (File `.wav`), `Mode` (List: `Layer Mix\|Ring Mod\|FM Scrub\|Amp Follow\|Sidechain`), `Pitch` (`-24..+24 st`), `Mix` (`0–100 %`). Cross-modulates or layers the sample with a secondary `.wav` file from SD. |
 | [`haas.c`](../editor-fx-sdk/effects/haas.c) | `Haas Effect` | `EFFECT \| STEREO` | `8,820 B` | `Delay` (`1–100 ms`, default `10 ms`), `Chan` (List: `Left\|Right`). Psychoacoustic stereo Haas widener delaying L or R channel with appended tail fade-out. |
 | [`multimode_filter.c`](../editor-fx-sdk/effects/multimode_filter.c) | `Multi-Mode Filter` | `EFFECT \| STEREO` | `0 B` | `Mode` (List: `LPF 24dB\|LPF 12dB\|BPF 12dB\|HPF 12dB\|Notch\|Peak`), `Cutoff` (`40–16000 Hz`), `Reso` (`0–95 %`), `Drive` (List: `Clean\|SoftSat\|WarmTube\|HardClip\|Foldback`). Zero-delay feedback Cytomic SVF filter. |
+| [`say_gen.c`](../editor-fx-sdk/effects/say_gen.c) | `Say Speech Gen` | `GENERATOR` | `16,384 B` | `Text` (`PARAM_TEXT`), `Voice` (`Male\|Female`), `Mode` (`Natural\|Robot\|Whisper`), `Pitch` (`65–320 Hz`), `Speed` (`40–400 WPM`), `Mouth` (`50–200 %`), `Throat` (`50–200 %`), `Grime` (`Clean\|Amiga 8b\|Lo-Fi`). Clean-room MIT formant speech synthesizer (Amiga `Say` homage). |
 | [`stereo_delay.c`](../editor-fx-sdk/effects/stereo_delay.c) | `Stereo Delay` | `EFFECT \| STEREO` | `176,404 B` | `Time` (`10–1000 ms`), `Fdbk` (`0–95 %`), `Mix` (`0–100 %`), `Tail` (List: `Ring Out\|Cut Off`). Stereo delay line with optional tail ring-out. |
 | [`stereo_to_mono.c`](../editor-fx-sdk/effects/stereo_to_mono.c) | `Stereo to Mono` | `STEREO \| CONVERT_TO_MONO` | `0 B` | `Source` (List: `Merge L+R\|Left Only\|Right Only\|Side L-R`), `Gain` (`-12.0 to +6.0 dB`). Converts a stereo sample on Tracker+ / Mini into a true mono sample, reclaiming 50% sample RAM. |
 
@@ -261,6 +262,14 @@ PTFX_PARAM_SAVE_FILE("Export", ".dat")
   - Any other extension (for example `".ir"` or `".bin"`) opens `kLoadGenericFile` or `kSaveGenericFile` filtered to that extension.
 - **UI display & controls**: The bottom button displays `"Select..."` (`PARAM_FILE`) or `"Save..."` (`PARAM_SAVE_FILE`), and once a file is chosen, its filename is rendered vertically inside the parameter column above the button (with no slider bar). A single press on the parameter's screen button (or `Insert` when selected) opens `GlobalFileBrowser` without disturbing the plugin's scratch or secondary sample buffers (`[0 .. 744 KB]`), and pressing `Delete` clears the selected file path.
 - **Notification inside the plugin**: When the user confirms a file, the firmware stores the selected path per parameter index (`0..11`), restores the effect UI, sets the parameter's float value to `1.0f` (`0.0f` if loading a `.wav` failed), and calls `plugin_set_param(index, value)`. Query the path via `host->get_selected_file_path(index)` and read WAV frames via `host->get_secondary_sample(&frames, &channels)` or raw bytes via `host->read_file()` / `host->write_file()`.
+
+#### 5. Editable Text Parameter (`PTFX_PARAM_TEXT`)
+```c
+PTFX_PARAM_TEXT("Text", "HELLO TRACKER")
+```
+- Opens Tracker's native on-screen QWERTY keyboard (`mtKeyboardManager`, up to **64 characters**) when the user presses the parameter's screen button or `Insert`.
+- Renders the current text vertically in the parameter column with `"Edit..."` in the bottom button; pressing `Delete` resets to the default text packed into `.ptfx_strings`.
+- Read the current text inside the plugin via `host->get_text_param(index)`. Saved and restored automatically in `.ptp` presets.
 
 ---
 
