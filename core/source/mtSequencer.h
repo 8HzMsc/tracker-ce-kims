@@ -359,6 +359,7 @@ class Sequencer
         uint8_t selectionModeLastStep = 0;
 
         uint16_t sequencialSwitch_pattern = 0;
+        uint16_t sequencialSwitch_pendingPattern = 0;
         bool sequencialSwitch_isArmed = 0;
         bool sequencialSwitch_loaded = 0;
         // Set by stop() in the audio callback, carried out by update().
@@ -750,6 +751,7 @@ class Sequencer
     void setSynthMute(MuteState muteState);
 
     void sequencialSwitch_changeNextPattern(int8_t delta);
+    void sequencialSwitch_queuePattern(uint8_t patternNumber);
     void sequencialSwitch_SetReady();
     void sequencialSwitch_SetReadyNow();
     void sequencialSwitch_Reset();

@@ -1,8 +1,10 @@
 #include "mtSequencer.h"
 
 #include "configEditor/configEditor.h"
+#include "fileManager.h"
 #include "instrumentEditor/instrumentEditor.h"
 #include "patternEditor/patternEditor.h"
+#include "performanceMode/performanceMode.h"
 #include "sampleEditor/sampleEditor.h"
 #include "samplePlayback/samplePlayback.h"
 #include "sampleRecorder/sampleRecorder.h"
@@ -47,6 +49,7 @@ void midiInit(UartMidi* uartMidi, UsbMidi* usbMidi)
     uartMidiReceiveActions.songPosition = handleJackSongPosition;
     uartMidiReceiveActions.continueMessage = receiveJackContinue;
     uartMidiReceiveActions.controlChange = handleJackControlChange;
+    uartMidiReceiveActions.programChange = handleJackProgramChange;
     uartMidi->setReceiveActions(&uartMidiReceiveActions);
 
     // usb
@@ -56,6 +59,7 @@ void midiInit(UartMidi* uartMidi, UsbMidi* usbMidi)
     usbMidiReceiveActions.noteOff = handleUsbNoteOff;
     usbMidiReceiveActions.songPosition = handleUsbSongPosition;
     usbMidiReceiveActions.controlChange = handleUSBControlChange;
+    usbMidiReceiveActions.programChange = handleUsbProgramChange;
 
     usbMidi->setReceiveActions(&usbMidiReceiveActions);
 }
@@ -301,6 +305,85 @@ void handleUSBControlChange(byte channel, byte number, byte value)
         IE->onControlChangeReceive(number, value);
         SP->onControlChangeReceive(number, value);
     }
+}
+
+static void handleProgramChange(byte channel, byte program)
+{
+    if ((channel != mtConfig.midi.programChangeInChannel) &&
+        (mtConfig.midi.programChangeInChannel != ALL_PROGRAM_CHANGE_CHANNELS))
+    {
+        return;
+    }
+
+    uint8_t targetPattern = (program & 0x7F) + 1;
+
+    if (sequencer.isPlay())
+    {
+        sequencer.sequencialSwitch_queuePattern(targetPattern);
+        return;
+    }
+
+    if (newFileManager.getStatus() != fmIdle)
+    {
+        return;
+    }
+
+    if (targetPattern == mtProject.values.actualPattern)
+    {
+        sequencer.sequencialSwitch_Reset();
+        sequencer.setOnGlobalStep(nullCallback);
+        return;
+    }
+
+    sequencer.sequencialSwitch_Reset();
+    sequencer.setOnGlobalStep(nullCallback);
+
+    if (mtInterface.isPatternScreenActive())
+    {
+        PTE->setActualPattern(targetPattern);
+    }
+    else
+    {
+        if (sequencer.getSeqState() != sequencer.SEQ_STATE_PLAY_PERFORMANCE)
+        {
+            newFileManager.saveWorkspacePatternNow(mtProject.values.actualPattern);
+        }
+
+        mtProject.values.actualPattern = targetPattern;
+        newFileManager.loadWorkspacePatternNow(mtProject.values.actualPattern);
+        sequencer.switchRamPatternsNow();
+
+        if (mtInterface.isPerformanceModeScreenActive())
+        {
+            for (uint8_t a = 0; a < kPerformanceTracks; a++)
+            {
+                mtProject.perfTracksPatterns[a] = mtProject.values.actualPattern;
+            }
+            performanceMode.refreshTrackPattern = 1;
+        }
+    }
+}
+
+void handleJackProgramChange(byte channel, byte program)
+{
+    if ((mtConfig.midi.programChangeInMode == programChangeIn_None) ||
+        (mtConfig.midi.programChangeInMode == programChangeIn_usb))
+    {
+        return;
+    }
+
+    handleProgramChange(channel, program);
+}
+
+void handleUsbProgramChange(byte channel, byte program)
+{
+    if ((mtConfig.midi.programChangeInMode == programChangeIn_None) ||
+        (mtConfig.midi.programChangeInMode == programChangeIn_jack))
+    {
+        return;
+    }
+
+    handleProgramChange(channel, program);
 }
 
 static uint32_t s_audioBlockStartUs = 0;

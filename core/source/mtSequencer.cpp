@@ -1963,7 +1963,13 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             switchRamPatternsNow();
             patternSwitched = true;
 
+            uint16_t pendingPattern = player.sequencialSwitch_pendingPattern;
             sequencialSwitch_Reset();
+            if (pendingPattern > 0)
+            {
+                player.sequencialSwitch_pattern = pendingPattern;
+                player.sequencialSwitch_isArmed = true;
+            }
         }
         else if (player.songMode)
         {
@@ -3535,6 +3541,36 @@ void Sequencer::sequencialSwitch_changeNextPattern(int8_t delta)
       clamp<int>(player.sequencialSwitch_pattern + delta, PATTERN_INDEX_MIN, PATTERN_INDEX_MAX);
 }
 
+void Sequencer::sequencialSwitch_queuePattern(uint8_t patternNumber)
+{
+    uint16_t clampedPattern = clamp<int>(patternNumber, PATTERN_INDEX_MIN, PATTERN_INDEX_MAX);
+
+    DISABLE_GLOBAL_INTERRUPTS();
+    if (player.sequencialSwitch_loaded)
+    {
+        // A pattern is already preloading/preloaded for the imminent end-of-pattern switch.
+        // Defer this new request until immediately after that switch completes.
+        player.sequencialSwitch_pendingPattern = clampedPattern;
+        ENABLE_GLOBAL_INTERRUPTS();
+        return;
+    }
+
+    player.sequencialSwitch_pendingPattern = 0;
+    player.sequencialSwitch_pattern = clampedPattern;
+
+    if (!newFileManager.isPatternLoading() && !isLastPatternStep())
+    {
+        player.sequencialSwitch_isArmed = true;
+        player.onGlobalStep = nullCallback;
+    }
+    else
+    {
+        player.sequencialSwitch_isArmed = false;
+        player.onGlobalStep = cbkSequencialSwitch_SetReady;
+    }
+    ENABLE_GLOBAL_INTERRUPTS();
+}
+
 // uzbraja sequencialSwitch
 void Sequencer::sequencialSwitch_SetReady()
 {
@@ -3561,6 +3597,7 @@ void cbkSequencialSwitch_SetReady()
 AUDIO_CORE_RAM void Sequencer::sequencialSwitch_Reset()
 {
     player.sequencialSwitch_pattern = 0;
+    player.sequencialSwitch_pendingPattern = 0;
     player.sequencialSwitch_isArmed = 0;
     player.sequencialSwitch_loaded = 0;
 }
