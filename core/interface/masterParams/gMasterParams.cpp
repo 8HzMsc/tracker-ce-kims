@@ -611,6 +611,7 @@ void cMasterParams::showReverbDiffusion()
 void cMasterParams::showLimiterScreen()
 {
     rebuildLimiterSidechainList();
+    display.setControlData(limiterSidechainList, &limiterSidechainData);
     display.setControlHide(delayPingpongEnableList);
     display.setControlHide(delaySyncEnableList);
     display.setControlHide(delaySyncRateList);
@@ -803,7 +804,7 @@ void cMasterParams::rebuildLimiterSidechainList()
     limiterSidechainVisibleCount = count;
     limiterSidechainData.linesCount = count;
     limiterSidechainData.length = count;
-    limiterSidechainData.start = 0;
+    limiterSidechainData.start = getLimiterSidechainVisibleIdx(getEffectiveLimiterSidechain());
     limiterSidechainData.data = (char**)limiterSidechainVisibleTexts;
 }
 
