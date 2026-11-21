@@ -906,6 +906,8 @@ void cSampleEditor::showTextParamKeyboard()
             display.refreshControl(paramList[i]);
         }
     }
+    display.setControlHide(blankSpaceCover);
+    display.refreshControl(blankSpaceCover);
     display.setControlHide(frame);
     display.refreshControl(frame);
     hideEffectList();
@@ -918,7 +920,7 @@ void cSampleEditor::showTextParamKeyboard()
         display.setControlValue(label[i], 0);
         display.setControlText(label[i], "");
         display.setControlText2(label[i], "");
-        display.setControlColors(label[i], display.getTheme().activeLabelsColors);
+        display.setControlColors(label[i], display.getTheme().activeButtonLabelsColors);
         display.setControlStyle(label[i],
                                 controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
         display.setControlPosition(label[i], (800 / 8) * i + (800 / 16), 424);
@@ -927,6 +929,10 @@ void cSampleEditor::showTextParamKeyboard()
 
     display.setControlText(label[0], "Enter");
     display.setControlText(label[1], "Clear");
+    display.setControlColors(label[2], display.getTheme().inactiveLabelsColors);
+    display.setControlColors(label[3], display.getTheme().inactiveLabelsColors);
+    display.setControlColors(label[4], display.getTheme().inactiveLabelsColors);
+    display.setControlColors(label[5], display.getTheme().inactiveLabelsColors);
     display.setControlText(label[6], "Cancel");
     display.setControlText(label[7], "Confirm");
 

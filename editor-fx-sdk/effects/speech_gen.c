@@ -1,23 +1,23 @@
-// PTFX_NAME: Say Speech Gen
-// PTFX_AUTHOR: Polyend CE
+// PTFX_NAME: Speech Gen
+// PTFX_AUTHOR: Sandroid
 // PTFX_FLAGS: GENERATOR
 // PTFX_SCRATCH: 16384
 //
-// Clean-room MIT formant speech synthesizer (Amiga Say homage).
+// Formant speech synthesizer (Amiga Say homage).
 // Uses public-domain NRL Report 7948 (1976) English letter-to-phoneme rules
 // paired with a Klatt-style cascade/parallel formant vocal tract model.
 
 #include "tracker_plugin.h"
 
 const PluginParam PLUGIN_PARAMS[8] = {
-    PTFX_PARAM_TEXT("Text", "HELLO TRACKER"),
+    PTFX_PARAM_TEXT("Text", "HELLO WORLD"),
     PTFX_PARAM_LIST("Voice", 0, "Male|Female"),
     PTFX_PARAM_LIST("Mode", 0, "Natural|Robot|Whisper"),
     PTFX_PARAM_INT("Pitch", 65.0f, 320.0f, 110.0f, 1.0f, " Hz"),
     PTFX_PARAM_INT("Speed", 40.0f, 400.0f, 150.0f, 5.0f, " WPM"),
     PTFX_PARAM_INT("Mouth", 50.0f, 200.0f, 100.0f, 2.0f, " %"),
     PTFX_PARAM_INT("Throat", 50.0f, 200.0f, 100.0f, 2.0f, " %"),
-    PTFX_PARAM_LIST("Grime", 1, "Clean|Amiga 8b|Lo-Fi")
+    PTFX_PARAM_LIST("Grime", 0, "Clean|Amiga 8b|Lo-Fi")
 };
 
 #define SAY_INTERNAL_SR 22050.0f
@@ -54,6 +54,7 @@ enum {
 #define PF_STOP      0x08u
 #define PF_NASAL     0x10u
 #define PF_ASPIRATED 0x20u
+#define PF_AFFRIC    0x40u
 
 typedef struct {
     uint16_t f1;       // Formant 1 Hz
@@ -74,20 +75,20 @@ typedef struct {
 static const PhoneDef kPhoneTable[PH_COUNT] = {
     //               f1    f2    f3   bw1  bw2  bw3  frF  frBW dur  vG  nG  flags
     [PH_SIL]     = { 500, 1500, 2500, 100, 150, 200, 3000, 800,  40,  0,  0, 0 },
-    // Vowels
-    [PH_IY]      = { 280, 2250, 2890,  60,  90, 150, 3000, 800, 115, 95,  0, PF_VOICED | PF_VOWEL },
-    [PH_IH]      = { 400, 1920, 2560,  65, 100, 150, 3000, 800,  85, 95,  0, PF_VOICED | PF_VOWEL },
-    [PH_EY]      = { 480, 2080, 2650,  70, 100, 150, 3000, 800, 125, 95,  0, PF_VOICED | PF_VOWEL },
-    [PH_EH]      = { 550, 1770, 2490,  75, 100, 160, 3000, 800,  95, 98,  0, PF_VOICED | PF_VOWEL },
-    [PH_AE]      = { 690, 1660, 2490,  85, 110, 170, 3000, 800, 120, 100, 0, PF_VOICED | PF_VOWEL },
-    [PH_AA]      = { 710, 1100, 2540,  85, 110, 170, 3000, 800, 120, 100, 0, PF_VOICED | PF_VOWEL },
-    [PH_AO]      = { 590,  880, 2540,  80, 100, 160, 3000, 800, 115, 98,  0, PF_VOICED | PF_VOWEL },
-    [PH_OW]      = { 460,  910, 2450,  75,  95, 160, 3000, 800, 125, 95,  0, PF_VOICED | PF_VOWEL },
-    [PH_UH]      = { 450, 1030, 2380,  70, 100, 160, 3000, 800,  85, 92,  0, PF_VOICED | PF_VOWEL },
-    [PH_UW]      = { 310,  870, 2250,  65,  95, 150, 3000, 800, 115, 90,  0, PF_VOICED | PF_VOWEL },
-    [PH_AH]      = { 620, 1220, 2550,  80, 105, 160, 3000, 800,  90, 96,  0, PF_VOICED | PF_VOWEL },
-    [PH_AX]      = { 500, 1400, 2480,  80, 110, 170, 3000, 800,  65, 85,  0, PF_VOICED | PF_VOWEL },
-    [PH_ER]      = { 480, 1350, 1690,  75, 100, 140, 3000, 800, 110, 94,  0, PF_VOICED | PF_VOWEL },
+    // Vowels (crisp Klatt formant targets & bandwidths for clear intelligibility)
+    [PH_IY]      = { 280, 2280, 2950,  50,  75, 130, 3000, 800, 115, 95,  0, PF_VOICED | PF_VOWEL },
+    [PH_IH]      = { 400, 1950, 2580,  55,  85, 135, 3000, 800,  85, 95,  0, PF_VOICED | PF_VOWEL },
+    [PH_EY]      = { 480, 2100, 2680,  60,  85, 135, 3000, 800, 125, 95,  0, PF_VOICED | PF_VOWEL },
+    [PH_EH]      = { 550, 1790, 2500,  65,  85, 140, 3000, 800,  95, 98,  0, PF_VOICED | PF_VOWEL },
+    [PH_AE]      = { 690, 1680, 2500,  75,  95, 150, 3000, 800, 120, 100, 0, PF_VOICED | PF_VOWEL },
+    [PH_AA]      = { 710, 1100, 2540,  75,  95, 150, 3000, 800, 120, 100, 0, PF_VOICED | PF_VOWEL },
+    [PH_AO]      = { 590,  880, 2540,  70,  85, 145, 3000, 800, 115, 98,  0, PF_VOICED | PF_VOWEL },
+    [PH_OW]      = { 450,  890, 2450,  65,  80, 140, 3000, 800, 125, 96,  0, PF_VOICED | PF_VOWEL },
+    [PH_UH]      = { 450, 1030, 2380,  60,  85, 140, 3000, 800,  85, 92,  0, PF_VOICED | PF_VOWEL },
+    [PH_UW]      = { 310,  860, 2250,  55,  80, 135, 3000, 800, 115, 92,  0, PF_VOICED | PF_VOWEL },
+    [PH_AH]      = { 620, 1220, 2550,  70,  90, 145, 3000, 800,  90, 96,  0, PF_VOICED | PF_VOWEL },
+    [PH_AX]      = { 500, 1400, 2480,  70,  95, 150, 3000, 800,  65, 85,  0, PF_VOICED | PF_VOWEL },
+    [PH_ER]      = { 480, 1350, 1680,  65,  85, 120, 3000, 800, 110, 95,  0, PF_VOICED | PF_VOWEL },
     // Diphthongs (placeholders; expanded into vowel pairs)
     [PH_AY]      = { 710, 1100, 2540,  85, 110, 170, 3000, 800, 130, 98,  0, PF_VOICED | PF_VOWEL },
     [PH_AW]      = { 710, 1100, 2540,  85, 110, 170, 3000, 800, 130, 98,  0, PF_VOICED | PF_VOWEL },
@@ -95,33 +96,33 @@ static const PhoneDef kPhoneTable[PH_COUNT] = {
     // Liquids, glides, nasals
     [PH_L]       = { 360, 1050, 2650,  70, 110, 180, 3000, 800,  75, 80,  0, PF_VOICED },
     [PH_R]       = { 420, 1280, 1620,  75, 105, 140, 3000, 800,  75, 82,  0, PF_VOICED },
-    [PH_W]       = { 300,  680, 2250,  65,  90, 160, 3000, 800,  75, 82,  0, PF_VOICED },
+    [PH_W]       = { 280,  640, 2250,  60,  85, 150, 3000, 800,  82, 88,  0, PF_VOICED },
     [PH_Y]       = { 270, 2200, 2950,  60,  95, 160, 3000, 800,  70, 82,  0, PF_VOICED },
     [PH_M]       = { 280, 1050, 2200,  90, 180, 240, 2000, 900,  78, 68,  0, PF_VOICED | PF_NASAL },
     [PH_N]       = { 280, 1650, 2500,  90, 180, 240, 2500, 900,  75, 68,  0, PF_VOICED | PF_NASAL },
     [PH_NG]      = { 280, 2100, 2600,  90, 180, 240, 2500, 900,  82, 65,  0, PF_VOICED | PF_NASAL },
     // Fricatives
-    [PH_F]       = { 400, 1300, 2400, 150, 200, 250, 4400, 2200, 85,  0, 48, PF_FRIC },
-    [PH_V]       = { 320, 1300, 2400, 120, 180, 240, 4000, 2000, 75, 55, 35, PF_VOICED | PF_FRIC },
-    [PH_TH]      = { 400, 1500, 2500, 150, 200, 250, 4800, 2400, 85,  0, 42, PF_FRIC },
-    [PH_DH]      = { 320, 1500, 2500, 120, 180, 240, 4200, 2200, 68, 58, 30, PF_VOICED | PF_FRIC },
-    [PH_S]       = { 400, 1750, 2650, 150, 200, 250, 5600, 1400, 95,  0, 78, PF_FRIC },
-    [PH_Z]       = { 320, 1750, 2650, 120, 180, 240, 5200, 1500, 82, 55, 58, PF_VOICED | PF_FRIC },
-    [PH_SH]      = { 400, 1950, 2600, 150, 200, 250, 2850,  900, 95,  0, 76, PF_FRIC },
-    [PH_ZH]      = { 320, 1950, 2600, 120, 180, 240, 2750,  950, 80, 55, 55, PF_VOICED | PF_FRIC },
-    [PH_HH]      = { 500, 1500, 2500, 120, 160, 220, 1800, 1400, 65,  0, 45, PF_ASPIRATED },
-    // Stops (closure + release burst handled in synth state)
-    [PH_P]       = { 300,  950, 2150, 120, 180, 240, 1100,  900, 78,  0, 62, PF_STOP },
-    [PH_B]       = { 240,  950, 2150, 100, 160, 220, 1000,  900, 68, 42, 32, PF_VOICED | PF_STOP },
-    [PH_T]       = { 320, 1750, 2650, 120, 180, 240, 4100, 1500, 74,  0, 72, PF_STOP },
-    [PH_D]       = { 260, 1750, 2650, 100, 160, 220, 3600, 1500, 66, 45, 36, PF_VOICED | PF_STOP },
-    [PH_K]       = { 320, 1900, 2400, 120, 180, 240, 2200, 1000, 80,  0, 68, PF_STOP },
-    [PH_G]       = { 260, 1900, 2400, 100, 160, 220, 2000, 1000, 70, 45, 34, PF_VOICED | PF_STOP },
-    // Affricates (expanded)
-    [PH_CH]      = { 400, 1950, 2600, 150, 200, 250, 2900,  900, 95,  0, 76, PF_FRIC },
-    [PH_JH]      = { 320, 1950, 2600, 120, 180, 240, 2800,  950, 85, 55, 55, PF_VOICED | PF_FRIC },
+    [PH_F]       = { 400, 1300, 2400, 150, 200, 250, 3400, 2200, 84,  0, 44, PF_FRIC },
+    [PH_V]       = { 320, 1300, 2400, 120, 180, 240, 3200, 1800, 74, 62, 24, PF_VOICED | PF_FRIC },
+    [PH_TH]      = { 400, 1500, 2500, 150, 200, 250, 3700, 2200, 82,  0, 40, PF_FRIC },
+    [PH_DH]      = { 320, 1500, 2500, 120, 180, 240, 3300, 1800, 68, 62, 26, PF_VOICED | PF_FRIC },
+    [PH_S]       = { 400, 1750, 2650, 150, 200, 250, 4800, 1400, 90,  0, 48, PF_FRIC },
+    [PH_Z]       = { 300, 1750, 2650, 110, 160, 220, 4600, 1200, 78, 66, 22, PF_VOICED | PF_FRIC },
+    [PH_SH]      = { 400, 1950, 2600, 150, 200, 250, 2450,  950, 92,  0, 52, PF_FRIC },
+    [PH_ZH]      = { 300, 1950, 2600, 110, 160, 220, 2400,  950, 76, 62, 26, PF_VOICED | PF_FRIC },
+    [PH_HH]      = { 500, 1500, 2500, 120, 160, 220, 1600, 1400, 62,  0, 36, PF_ASPIRATED },
+    // Stops (unvoiced P/T/K have longer duration for 30-35 ms VOT aspiration)
+    [PH_P]       = { 300,  900, 2100, 120, 180, 240,  950,  900, 84,  0, 48, PF_STOP },
+    [PH_B]       = { 240,  900, 2100, 100, 160, 220,  850,  900, 58, 52, 18, PF_VOICED | PF_STOP },
+    [PH_T]       = { 320, 1750, 2650, 120, 180, 240, 3200, 1700, 82,  0, 50, PF_STOP },
+    [PH_D]       = { 260, 1750, 2650, 100, 160, 220, 2800, 1500, 58, 54, 20, PF_VOICED | PF_STOP },
+    [PH_K]       = { 320, 1950, 2400, 120, 180, 240, 1900, 1100, 88,  0, 48, PF_STOP },
+    [PH_G]       = { 260, 1950, 2400, 100, 160, 220, 1750, 1100, 60, 54, 20, PF_VOICED | PF_STOP },
+    // Affricates (dedicated closure + crisp fricative release)
+    [PH_CH]      = { 380, 1950, 2600, 140, 190, 240, 2550,  950, 96,  0, 56, PF_AFFRIC },
+    [PH_JH]      = { 300, 1950, 2600, 110, 170, 220, 2450,  950, 88, 58, 38, PF_VOICED | PF_AFFRIC },
     // Pauses
-    [PH_PAU_WORD]   = { 500, 1500, 2500, 100, 150, 200, 3000, 800,  50, 0, 0, 0 },
+    [PH_PAU_WORD]   = { 500, 1500, 2500, 100, 150, 200, 3000, 800,  65, 0, 0, 0 },
     [PH_PAU_COMMA]  = { 500, 1500, 2500, 100, 150, 200, 3000, 800, 160, 0, 0, 0 },
     [PH_PAU_PERIOD] = { 500, 1500, 2500, 100, 150, 200, 3000, 800, 240, 0, 0, 0 },
 };
@@ -150,6 +151,7 @@ static const LtsRule kLtsRules[] = {
     { " ", "YOU",     " ",  { PH_Y,  PH_UW, 0, 0 } },
     { " ", "YOUR",    " ",  { PH_Y,  PH_AO, PH_R, 0 } },
     { " ", "ARE",     " ",  { PH_AA, PH_R,  0, 0 } },
+    { " ", "ZERO",    " ",  { PH_Z,  PH_IY, PH_R,  PH_OW } },
     { " ", "ONE",     " ",  { PH_W,  PH_AH, PH_N, 0 } },
     { " ", "TWO",     " ",  { PH_T,  PH_UW, 0, 0 } },
     { " ", "FOUR",    " ",  { PH_F,  PH_AO, PH_R, 0 } },
@@ -384,6 +386,8 @@ typedef struct {
     float c;
     float y1;
     float y2;
+    float x1;
+    float x2;
 } Resonator;
 
 typedef struct {
@@ -537,12 +541,10 @@ static int match_right(const char* pat, const char* text, int pos, int tlen) {
 
 static void push_phone(SayState* st, uint8_t ph, uint8_t stress) {
     if (ph == PH_SIL || ph >= PH_COUNT) return;
-    // Expand diphthongs & affricates into smooth two-part sequences
+    // Expand diphthongs into smooth two-part vowel sequences
     if (ph == PH_AY) { push_phone(st, PH_AA, stress); push_phone(st, PH_IY, 0); return; }
     if (ph == PH_AW) { push_phone(st, PH_AA, stress); push_phone(st, PH_UW, 0); return; }
     if (ph == PH_OY) { push_phone(st, PH_AO, stress); push_phone(st, PH_IY, 0); return; }
-    if (ph == PH_CH) { push_phone(st, PH_T, 0); push_phone(st, PH_SH, 0); return; }
-    if (ph == PH_JH) { push_phone(st, PH_D, 0); push_phone(st, PH_ZH, 0); return; }
 
     if (st->queue_len >= SAY_MAX_PHONES) return;
     float speed_scale = 150.0f / (s_speed > 20.0f ? s_speed : 150.0f);
@@ -720,6 +722,27 @@ static inline float resonator_tick(Resonator* r, float x) {
     return y;
 }
 
+static inline void bandpass_set(Resonator* r, float freq, float bw) {
+    if (!s_host || !s_host->expf || !s_host->cosf) return;
+    if (freq < 200.0f) freq = 200.0f;
+    if (freq > 8000.0f) freq = 8000.0f;
+    if (bw < 150.0f) bw = 150.0f;
+    float r_mag = s_host->expf(-SAY_PI * bw / SAY_INTERNAL_SR);
+    r->c = -(r_mag * r_mag);
+    r->b = 2.0f * r_mag * s_host->cosf(2.0f * SAY_PI * freq / SAY_INTERNAL_SR);
+    // Constant peak-gain bandpass: zeros at DC and Nyquist, bounded ~1.0x at freq
+    r->a = (1.0f - r_mag) * 0.70f;
+}
+
+static inline float bandpass_tick(Resonator* r, float x) {
+    float y = r->a * (x - r->x2) + r->b * r->y1 + r->c * r->y2;
+    r->x2 = r->x1;
+    r->x1 = x;
+    r->y2 = r->y1;
+    r->y1 = y;
+    return y;
+}
+
 static inline float next_noise(SayState* st) {
     st->rng_state = st->rng_state * 1664525u + 1013904223u;
     int32_t v = (int32_t)(st->rng_state >> 8) - 8388608;
@@ -784,49 +807,93 @@ static float render_internal_sample(SayState* st) {
     float throat_scale = (s_throat / 100.0f) * sex_scale;
     float mouth_scale  = (s_mouth  / 100.0f) * sex_scale;
 
-    float tgt_f1  = (float)pd->f1 * throat_scale;
-    float tgt_f2  = (float)pd->f2 * mouth_scale;
-    float tgt_f3  = (float)pd->f3 * mouth_scale;
-    float tgt_bw1 = (float)pd->bw1;
-    float tgt_bw2 = (float)pd->bw2;
-    float tgt_bw3 = (float)pd->bw3;
-    float tgt_frf = (float)pd->fric_f * (s_voice ? 1.08f : 1.0f);
-    float tgt_frb = (float)pd->fric_bw;
+    // Anticipatory coarticulation: during silence/pauses, pre-position formants
+    // toward the upcoming phoneme so word-initial W/L/R/stops start on target!
+    const PhoneDef* formant_pd = pd;
+    if (pd->v_gain == 0 && pd->n_gain == 0 && (st->queue_pos + 1u) < st->queue_len) {
+        const PhoneDef* next_pd = &kPhoneTable[st->queue[st->queue_pos + 1u].phone_id];
+        if (next_pd->v_gain > 0 || next_pd->n_gain > 0) {
+            formant_pd = next_pd;
+        }
+    }
+
+    float tgt_f1  = (float)formant_pd->f1 * throat_scale;
+    float tgt_f2  = (float)formant_pd->f2 * mouth_scale;
+    float tgt_f3  = (float)formant_pd->f3 * mouth_scale;
+    float tgt_bw1 = (float)formant_pd->bw1;
+    float tgt_bw2 = (float)formant_pd->bw2;
+    float tgt_bw3 = (float)formant_pd->bw3;
+    float tgt_frf = (float)formant_pd->fric_f * (s_voice ? 1.08f : 1.0f);
+    float tgt_frb = (float)formant_pd->fric_bw;
 
     float tgt_v = (float)pd->v_gain * 0.01f;
     float tgt_n = (float)pd->n_gain * 0.01f;
 
-    // Stop consonants: first 55% is closure (quiet/voice-bar), final 45% is burst
+    // Stops & Affricates with authentic English VOT (Voice Onset Time)
+    float stop_asp = 0.0f;
     if (pd->flags & PF_STOP) {
         float prog = (float)st->phone_sample_idx / (float)(qp->dur_samples > 0 ? qp->dur_samples : 1);
-        if (prog < 0.55f) {
-            tgt_n = 0.0f;
-            tgt_v = (pd->flags & PF_VOICED) ? 0.18f : 0.0f;
-        } else if (prog < 0.80f) {
-            // Crisp plosive burst!
-            tgt_n = (float)pd->n_gain * 0.012f;
-            tgt_v = (pd->flags & PF_VOICED) ? 0.35f : 0.0f;
+        if (pd->flags & PF_VOICED) {
+            // Voiced B/D/G: voiced closure bar -> gentle burst -> immediate voice onset
+            if (prog < 0.55f) {
+                tgt_n = 0.0f;
+                tgt_v = 0.24f;
+            } else if (prog < 0.75f) {
+                float u = (prog - 0.55f) / 0.20f;
+                float tri = (u < 0.35f) ? (u / 0.35f) : ((1.0f - u) / 0.65f);
+                tgt_n = (float)pd->n_gain * 0.01f * tri;
+                tgt_v = 0.55f;
+            } else {
+                tgt_n = 0.0f;
+                tgt_v = 0.85f;
+            }
         } else {
-            // Aspiration / voice onset transition
-            tgt_n = (float)pd->n_gain * 0.004f;
-            tgt_v = (pd->flags & PF_VOICED) ? 0.55f : 0.0f;
+            // Unvoiced P/T/K: silent closure -> crisp burst -> 30-35ms breathy VOT aspiration
+            if (prog < 0.42f) {
+                tgt_n = 0.0f;
+                tgt_v = 0.0f;
+            } else if (prog < 0.60f) {
+                float u = (prog - 0.42f) / 0.18f;
+                float tri = (u < 0.30f) ? (u / 0.30f) : ((1.0f - u) / 0.70f);
+                tgt_n = (float)pd->n_gain * 0.01f * tri;
+                tgt_v = 0.0f;
+                stop_asp = 0.28f * tri;
+            } else {
+                float u = (prog - 0.60f) / 0.40f;
+                tgt_n = 0.0f;
+                tgt_v = 0.0f;
+                stop_asp = 0.34f * (1.0f - 0.65f * u);
+            }
+        }
+    } else if (pd->flags & PF_AFFRIC) {
+        // Affricates CH / JH: tight closure (0..38%) -> punchy fricative release (38..100%)
+        float prog = (float)st->phone_sample_idx / (float)(qp->dur_samples > 0 ? qp->dur_samples : 1);
+        if (prog < 0.38f) {
+            tgt_n = 0.0f;
+            tgt_v = (pd->flags & PF_VOICED) ? 0.22f : 0.0f;
+        } else {
+            float u = (prog - 0.38f) / 0.62f;
+            float env = (u < 0.15f) ? (u / 0.15f) : (1.0f - 0.25f * u);
+            tgt_n = (float)pd->n_gain * 0.01f * env;
+            tgt_v = (pd->flags & PF_VOICED) ? ((float)pd->v_gain * 0.01f) : 0.0f;
         }
     }
 
     // Whisper mode: replace voicing with soft aspirated airflow through formants
     int is_whisper = (s_mode == 2);
-    float asp_amp = 0.0f;
+    float asp_amp = stop_asp;
     if (is_whisper) {
-        asp_amp = tgt_v * 0.65f;
+        asp_amp += tgt_v * 0.65f;
         tgt_v = 0.0f;
     } else if (pd->flags & PF_ASPIRATED) {
-        asp_amp = tgt_n * 0.70f;
+        asp_amp += tgt_n * 0.70f;
         tgt_n = 0.0f;
     }
 
     // Smooth coarticulation (update coefficients every 16 internal samples = ~0.72 ms)
     if ((st->rendered_internal_samples & 15u) == 0u) {
-        float alpha = (pd->flags & PF_STOP) ? 0.35f : 0.14f;
+        int is_silent_pause = (pd->v_gain == 0 && pd->n_gain == 0);
+        float alpha = is_silent_pause ? 0.45f : ((pd->flags & PF_STOP) ? 0.30f : 0.14f);
         st->cur_f1  += (tgt_f1  - st->cur_f1)  * alpha;
         st->cur_f2  += (tgt_f2  - st->cur_f2)  * alpha;
         st->cur_f3  += (tgt_f3  - st->cur_f3)  * alpha;
@@ -839,7 +906,7 @@ static float render_internal_sample(SayState* st) {
         resonator_set(&st->r1, st->cur_f1, st->cur_bw1);
         resonator_set(&st->r2, st->cur_f2, st->cur_bw2);
         resonator_set(&st->r3, st->cur_f3, st->cur_bw3);
-        resonator_set(&st->r_fric, st->cur_fr_f, st->cur_fr_bw);
+        bandpass_set(&st->r_fric, st->cur_fr_f, st->cur_fr_bw);
 
         // Pitch contour (Natural vs Robot)
         float base_f0 = s_pitch * (s_voice ? 1.55f : 1.0f);
@@ -873,12 +940,12 @@ static float render_internal_sample(SayState* st) {
     if (st->glot_phase < 0.40f) {
         float t = st->glot_phase / 0.40f;
         glot = 0.5f * (1.0f - s_host->cosf(SAY_PI * t));
-    } else if (st->glot_phase < 0.56f) {
-        float t = (st->glot_phase - 0.40f) / 0.16f;
+    } else if (st->glot_phase < 0.60f) {
+        float t = (st->glot_phase - 0.40f) / 0.20f;
         glot = s_host->cosf(0.5f * SAY_PI * t);
     }
     // Lip radiation first-difference (boosts F2/F3 clarity)
-    float glot_rad = (glot - 0.88f * st->prev_glot) * 2.4f;
+    float glot_rad = (glot - 0.86f * st->prev_glot) * 2.3f;
     st->prev_glot = glot;
 
     float white = next_noise(st);
@@ -890,10 +957,13 @@ static float render_internal_sample(SayState* st) {
     y = resonator_tick(&st->r3, y);
     y = resonator_tick(&st->r4, y);
 
-    // Parallel fricative/burst noise path
-    float fric = resonator_tick(&st->r_fric, white * st->cur_n_gain * 0.55f);
+    // Parallel fricative/burst noise path (pitch-modulated for voiced fricatives like Z/V/DH)
+    float fric_mod = ((pd->flags & (PF_VOICED | PF_FRIC)) == (PF_VOICED | PF_FRIC))
+                       ? (0.35f + 0.65f * glot)
+                       : 1.0f;
+    float fric = bandpass_tick(&st->r_fric, white * st->cur_n_gain * fric_mod * 0.45f);
 
-    float out = y * 0.55f + fric * 0.65f;
+    float out = y * 0.62f + fric * 0.45f;
 
     // Advance phoneme position
     st->phone_sample_idx++;
@@ -974,11 +1044,13 @@ int32_t plugin_process_block(const int16_t** in, int16_t** out, uint32_t samples
             sample_val = s_host->tanhf(sample_val * 1.85f);
         }
 
-        // Grime modes: 0=Clean, 1=Amiga 8-bit Paula DAC + gentle 4kHz filter, 2=Lo-Fi 11kHz/6-bit
+        // Grime modes: 0=Clean, 1=Amiga 8-bit Paula DAC + gentle analog output filter, 2=Lo-Fi 11kHz/6-bit
         if (s_grime == 1) {
-            // Amiga 8-bit signed PCM quantization + subtle warm analog output filter
-            float q = (float)((int32_t)(sample_val * 127.0f)) * (1.0f / 127.0f);
-            s_st->lp_state += (q - s_st->lp_state) * 0.45f;
+            // Rounded 8-bit signed PCM quantization (avoids harsh zero-crossing fuzz) + warm LED filter
+            float scaled = sample_val * 127.0f;
+            int32_t qi = (int32_t)(scaled >= 0.0f ? (scaled + 0.5f) : (scaled - 0.5f));
+            float q = (float)qi * (1.0f / 127.0f);
+            s_st->lp_state += (q - s_st->lp_state) * 0.52f;
             sample_val = s_st->lp_state;
         } else if (s_grime == 2) {
             if (s_st->lofi_hold_count == 0) {

@@ -2579,11 +2579,13 @@ static void functTextParamClear()
             maxLen = ml;
     }
     SE->keyboardManager.activateKeyboard(maxLen);
+    SE->keyboardManager.makeMove('s');
 }
 static void functTextParamCancel()
 {
     SE->keyboardManager.deactivateKeyboard();
     s_editingTextParamIdx = -1;
+    SE->setCommonFunctions();
     SE->reloadFrameData(cSampleEditor::effectScreen);
     SE->showEffectParamsScreen();
     SE->setParamsScreenFunctions();
@@ -2608,6 +2610,7 @@ static void functTextParamConfirm()
         SE->currentEffect->clearProcessedData();
     }
 
+    SE->setCommonFunctions();
     SE->reloadFrameData(cSampleEditor::effectScreen);
     SE->showEffectParamsScreen();
     SE->setParamsScreenFunctions();
@@ -2624,6 +2627,9 @@ void cSampleEditor::setTextParamKeyboardFunctions()
     ip->clearButton(interfaceButtonInsert);
     ip->clearAllPots();
 
+    ip->setPadsGlobal(functPads);
+    ip->setButtonObj(interfaceButtonMiniMiddle, buttonPress, functTextParamEnter);
+    ip->setButtonObj(interfaceButtonShift, buttonPress, functTextParamEnter);
     ip->setButtonObj(interfaceButtonLeft, buttonPress, functTextParamLeft);
     ip->setButtonObj(interfaceButtonRight, buttonPress, functTextParamRight);
     ip->setButtonObj(interfaceButtonUp, buttonPress, functTextParamUp);
@@ -2663,8 +2669,8 @@ void cSampleEditor::openModularParamTextKeyboard(int paramIdx)
     s_editingTextParamIdx = paramIdx;
     const char* curText = PtfxLoader::getSelectedFilePath(static_cast<uint8_t>(paramIdx));
     keyboardManager.fillName(curText);
-    showTextParamKeyboard();
     keyboardManager.activateKeyboard(maxLen);
+    showTextParamKeyboard();
     setTextParamKeyboardFunctions();
 }
 
