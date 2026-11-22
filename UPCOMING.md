@@ -15,7 +15,7 @@
 	* See [`docs/custom_synth_sdk.md`](docs/custom_synth_sdk.md) and [`synth-plugin-sdk/README.md`](synth-plugin-sdk/README.md).
 
 2. **Unified File Browser Across All Screens (All 3 Devices)**
-	* Replaced the older single-folder file pickers with a unified folder-navigating browser across Project **`Open`** / **`Save As`**, **`.mod` / `.it` Import**, Synth Patch **`Load`** / **`Save`**, Synth **Sample Slot** `.wav` selection, and Sample Editor **Effect Loader (`Load Effect...`), File Parameters & Effect Presets** (with direct switching out to other screens via hardware module buttons).
+	* Replaced the older single-folder file pickers with a unified folder-navigating browser across Project **`Open`** / **`Save As`**, **`.mod` / `.it` Import**, Instrument Effects **`Save .pti`**, Synth Patch **`Load`** / **`Save`**, Synth **Sample Slot** `.wav` selection, and Sample Editor **Effect Loader (`Load Effect...`), File Parameters & Effect Presets** (with direct switching out to other screens via hardware module buttons).
 	* See [`docs/global_file_browser.md`](docs/global_file_browser.md).
 
 3. **Per-Sample SD Streaming Controls & RAM Default in Sample Loader (All 3 Devices)**
@@ -75,6 +75,9 @@
 
 15. **Pattern Switching via Incoming MIDI Program Change (All 3 Devices)**
 	* Added **`Config → MIDI → Program Change in`** (Off, USB, MIDI In jack, or both) and **`Config → MIDI → Program Change in ch.`** (`All` or channels `1–16`). Incoming MIDI Program Change messages (`0–127`) queue **Pattern `1–128`** for the next pattern boundary during playback, or switch immediately when stopped.
+
+16. **Standalone `.pti` Instrument Saving (All 3 Devices)**
+	* Added a **`Save .pti`** button on the **Instrument Effects** screen (2nd page of Instrument Parameters), allowing you to export the active sample instrument with all the settings as a standalone `.pti` file anywhere on the SD card (defaulting to `/Instruments` via the unified file browser).
 
 ### Changed & Fixed
 

@@ -44,7 +44,7 @@ This guide covers everything needed to use, author, compile, and understand cust
 
 The **Modular Effects System (`PTFX`)** introduces dynamically loadable DSP and synthesis plugins for the Polyend Tracker family across all three hardware platforms:
 
-- **Original Polyend Tracker** - NXP Kinetis MK66 (`ARM Cortex-M4F` @ 180 MHz, mono sample engine)
+- **Original Polyend Tracker** - NXP Kinetis MK66 (`ARM Cortex-M4F` @ 180 MHz, stereo sample engine)
 - **Polyend Tracker+** - NXP i.MX RT1051/RT1064 (`ARM Cortex-M7F` @ 600 MHz, stereo sample engine)
 - **Polyend Tracker Mini** - NXP i.MX RT1051/RT1064 (`ARM Cortex-M7F` @ 600 MHz, stereo sample engine)
 
@@ -82,7 +82,7 @@ All plugins in [`editor-fx-sdk/effects/`](../editor-fx-sdk/effects) can be compi
 | [`multimode_filter.c`](../editor-fx-sdk/effects/multimode_filter.c) | `Multi-Mode Filter`  | `EFFECT \| STEREO`          | `0 B`       | `Mode` (List: `LPF 24dB\|LPF 12dB\|BPF 12dB\|HPF 12dB\|Notch\|Peak`), `Cutoff` (`40–16000 Hz`), `Reso` (`0–95 %`), `Drive` (List: `Clean\|SoftSat\|WarmTube\|HardClip\|Foldback`). Zero-delay feedback Cytomic SVF filter.                                      |
 | [`speech_gen.c`](../editor-fx-sdk/effects/speech_gen.c)             | `Speech Gen`         | `GENERATOR`                 | `16,384 B`  | `Text` (`PARAM_TEXT`), `Voice` (`Male\|Female`), `Mode` (`Natural\|Robot\|Whisper`), `Pitch` (`65–320 Hz`), `Speed` (`40–400 WPM`), `Mouth` (`50–200 %`), `Throat` (`50–200 %`), `Grime` (`Clean\|Amiga 8b\|Lo-Fi`). Formant speech synthesizer (Amiga homage). |
 | [`stereo_delay.c`](../editor-fx-sdk/effects/stereo_delay.c)         | `Stereo Delay`       | `EFFECT \| STEREO`          | `176,404 B` | `Time` (`10–1000 ms`), `Fdbk` (`0–95 %`), `Mix` (`0–100 %`), `Tail` (List: `Ring Out\|Cut Off`). Stereo delay line with optional tail ring-out.                                                                                                                 |
-| [`stereo_to_mono.c`](../editor-fx-sdk/effects/stereo_to_mono.c)     | `Stereo to Mono`     | `STEREO \| CONVERT_TO_MONO` | `0 B`       | `Source` (List: `Merge L+R\|Left Only\|Right Only\|Side L-R`), `Gain` (`-12.0 to +6.0 dB`). Converts a stereo sample on Tracker+ / Mini into a true mono sample, reclaiming 50% sample RAM.                                                                     |
+| [`stereo_to_mono.c`](../editor-fx-sdk/effects/stereo_to_mono.c)     | `Stereo to Mono`     | `STEREO \| CONVERT_TO_MONO` | `0 B`       | `Source` (List: `Merge L+R\|Left Only\|Right Only\|Side L-R`), `Gain` (`-12.0 to +6.0 dB`). Converts a stereo sample into a true mono sample, reclaiming 50% sample RAM.                                                                     |
 
 ---
 
@@ -205,9 +205,9 @@ int32_t plugin_process_block(const int16_t** in, int16_t** out, uint32_t samples
 | :--- | :--- | :--- |
 | `EFFECT` | `PTFX_FLAG_EFFECT` (`0x0000`) | Standard audio effect transforming `in` to `out` across the selected sample range (plus optional prepended/appended samples via `set_extra_samples`). Disabled on empty sample slots. |
 | `GENERATOR` | `PTFX_FLAG_GENERATOR` (`0x0001`) | Audio generator/synthesizer. Can run on empty instrument slots (`in` is `NULL`), produces up to `88,200` samples (`2.0 s`, or stops early if `plugin_process_block` returns `<= 0`), activates inactive instruments upon apply, and names them `"Gen XX"`. |
-| `STEREO` | `PTFX_FLAG_STEREO` (`0x0002`) | Processes independent Left/Right channels when `channels == 2` on Tracker+ / Tracker Mini. On Original Tracker (`MK66`), `channels` is always `1`. |
+| `STEREO` | `PTFX_FLAG_STEREO` (`0x0002`) | Processes independent Left/Right channels (`channels == 2` across all platforms). If a mono sample produces different L/R output, the Sample Editor automatically upgrades it to stereo. |
 | `WAVETABLE` | `PTFX_FLAG_WAVETABLE` (`0x0004`) | Automatically sets `instrument.playMode = playModeWavetable` when committed. |
-| `CONVERT_TO_MONO` | `PTFX_FLAG_CONVERT_TO_MONO` (`0x0008`) | Signals `cSampleEditor::isCurrentSampleStereo()` on IMX platforms to export only the Left channel (`memoryAddressR = memoryAddressL`) when saving back to project sample memory, reclaiming 50% sample RAM. |
+| `CONVERT_TO_MONO` | `PTFX_FLAG_CONVERT_TO_MONO` (`0x0008`) | Signals `cSampleEditor::isCurrentSampleStereo()` to export only the Left channel (`memoryAddressR = memoryAddressL`) when saving back to project sample memory, reclaiming 50% sample RAM. |
 | `IMX_ONLY` | `PTFX_FLAG_IMX_ONLY` (`0x0010`) | Requires Cortex-M7 speeds or `> 32 KB` code/BSS size; blocked from executing on Original Tracker (`MK66`). |
 
 ---
@@ -376,7 +376,7 @@ Generators synthesize audio from scratch (`in` is `NULL`) and can run even when 
 - Maximum generation window is `88,200` samples (`2.0 seconds` at `44.1 kHz`).
 - To generate a shorter sample (such as a `300 ms` drum hit or a single-cycle oscillator waveform of `689` samples), stop generating once your target sample count is reached and return `0` on the next call (or return the exact remaining sample count `< samples` and `0` thereafter).
 - When `plugin_process_block()` finishes early, the firmware automatically trims `processed[ch].selection.length` and `processed[ch].area.length` to the exact number of samples generated.
-- Write identical samples to all `channels` (`for (uint8_t c = 0; c < channels; c++) out[c][i] = pcm;`) so stereo instruments on Tracker+ / Tracker Mini receive both Left and Right channels.
+- Write identical samples to all `channels` (`for (uint8_t c = 0; c < channels; c++) out[c][i] = pcm;`) so stereo instruments receive both Left and Right channels.
 - See [`editor-fx-sdk/effects/analog_kick_gen.c`](../editor-fx-sdk/effects/analog_kick_gen.c) and [`editor-fx-sdk/effects/chiptune_gen.c`](../editor-fx-sdk/effects/chiptune_gen.c).
 
 ### 7.5 Pattern D: Using Working Scratch RAM (`PTFX_SCRATCH`)
